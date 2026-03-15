@@ -7,10 +7,14 @@ Computer vision web app using:
 ## Development
 
 Frontend:
+```
 cd frontend
 npm run dev
+```
 
 Backend:
+```
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload
+```
