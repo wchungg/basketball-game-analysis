@@ -1,10 +1,18 @@
 from utils import read_video, save_video
+from trackers import PlayerTracker
 
 def main():
     print("hello world")
 
     # read video
     video_frames = read_video("video_data/block.mp4")
+
+    # init tracker
+    player_tracker = PlayerTracker("models/player_detector.pt")
+
+    # run trackers
+    player_tracks = player_tracker.get_object_tracks(video_frames)
+    print(player_tracks)
 
     # save video
     save_video(video_frames, "output_videos/output_video.avi")
