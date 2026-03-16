@@ -23,6 +23,7 @@ networkx==3.6.1
 numpy==2.4.3
 opencv-python==4.13.0.92
 packaging==26.0
+pandas==3.0.1
 pillow==12.1.1
 polars==1.39.0
 polars-runtime-32==1.39.0
