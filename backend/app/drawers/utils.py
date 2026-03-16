@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import sys
 sys.path.append("../")
 from utils import get_center_of_bbox, get_bbox_width
@@ -47,5 +48,19 @@ def draw_ellipse(frame, bbox, color, track_id=None):
             2
         )
     
+    return frame
+
+def draw_triangle(frame, bbox, color):
+    y = int(bbox[1])
+    x, _ = get_center_of_bbox(bbox)
+
+    triangle_points = np.array([
+        [x, y],
+        [x - 10, y - 20],
+        [x + 10, y - 20]
+    ])
+    cv2.drawContours(frame, [triangle_points], 0, color, cv2.FILLED)
+    cv2.drawContours(frame, [triangle_points], 0, (0, 0, 0), 2)
+
     return frame
     
