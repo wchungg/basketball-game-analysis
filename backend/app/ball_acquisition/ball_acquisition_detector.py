@@ -29,13 +29,13 @@ class BallAcquisitionDetector:
 
         output_points += [
             (x1, y1), # top left corner
-            (x1, y1), # top right corner
-            (x1, y1), # bottom left corner
-            (x1, y1), # bottom right corner
+            (x2, y1), # top right corner
+            (x1, y2), # bottom left corner
+            (x2, y2), # bottom right corner
             (x1 + width // 2, y1), # top center
-            (x1 + width // 2, y1), # bottom center
+            (x1 + width // 2, y2), # bottom center
             (x1, y1 + height // 2), # left center
-            (x1, y1 + height // 2) # right center
+            (x2, y1 + height // 2) # right center
         ]
 
         return output_points
@@ -53,8 +53,11 @@ class BallAcquisitionDetector:
 
         intersection_x1 = max(px1, bx1)
         intersection_y1 = max(py1, by1)
-        intersection_x2 = max(px2, bx2)
-        intersection_y2 = max(py2, by2)
+        intersection_x2 = min(px2, bx2)
+        intersection_y2 = min(py2, by2)
+
+        if intersection_x2 < intersection_x1 or intersection_y2 < intersection_y1:
+            return 0
 
         intersection_area = (intersection_x2 - intersection_x1) * (intersection_y2 - intersection_y1)
         containment_ratio = intersection_area / ball_area

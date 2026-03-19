@@ -35,8 +35,6 @@ def main():
     ball_acquisition_detector = BallAcquisitionDetector()
     ball_acquisition = ball_acquisition_detector.detect_ball_possession(player_tracks, ball_tracks)
 
-    print(ball_acquisition)
-
     # draw output
     # init drawers
     player_tracks_drawer = PlayerTracksDrawer()
@@ -45,7 +43,8 @@ def main():
     # draw object tracks
     output_video_frames = player_tracks_drawer.draw(video_frames, 
                                                     player_tracks, 
-                                                    player_assignment)
+                                                    player_assignment,
+                                                    ball_acquisition)
     output_video_frames = ball_tracks_drawer.draw(output_video_frames, ball_tracks)
 
     # save video
