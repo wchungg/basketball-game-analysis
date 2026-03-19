@@ -44,7 +44,7 @@ def draw_ellipse(frame, bbox, color, track_id=None):
             (int(x1_rect), int(y1_rect + 15)), 
             cv2.FONT_HERSHEY_SIMPLEX, 
             0.6, 
-            (255, 255, 255), 
+            (0, 0, 0), 
             2
         )
     
