@@ -17,7 +17,7 @@ class TeamBallControlDrawer:
                 team_ball_control.append(-1)
                 continue
 
-            if player_assignment_frame[ball_acquisition_frame] == -1:
+            if player_assignment_frame[ball_acquisition_frame] == 1:
                 team_ball_control.append(1)
             else:
                 team_ball_control.append(2)
@@ -32,9 +32,6 @@ class TeamBallControlDrawer:
 
         output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
-            if frame_num == 0:
-                continue
-
             frame_drawn = self.draw_frame(frame, frame_num, team_ball_control)
             output_video_frames.append(frame_drawn)
 

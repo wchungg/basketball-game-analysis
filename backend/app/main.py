@@ -1,14 +1,15 @@
 from utils import read_video, save_video
 from trackers import PlayerTracker, BallTracker
-from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer
+from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer
 from team_assigner import TeamAssigner
 from ball_acquisition import BallAcquisitionDetector
+from pass_steal_detector import PassAndStealDetector
 
 def main():
     print("hello world")
 
     # read video
-    video_frames = read_video("video_data/block.mp4")
+    video_frames = read_video("video_data/turnover.mp4")
 
     # init tracker
     player_tracker = PlayerTracker("models/player_detector.pt")
@@ -35,11 +36,17 @@ def main():
     ball_acquisition_detector = BallAcquisitionDetector()
     ball_acquisition = ball_acquisition_detector.detect_ball_possession(player_tracks, ball_tracks)
 
+    # detect passes and steals
+    passes_and_steal_detector = PassAndStealDetector()
+    passes = passes_and_steal_detector.detect_pass(ball_acquisition, player_assignment)
+    steals = passes_and_steal_detector.detect_steal(ball_acquisition, player_assignment)
+
     # draw output
     # init drawers
     player_tracks_drawer = PlayerTracksDrawer()
     ball_tracks_drawer = BallTracksDrawer()
     team_ball_control_drawer = TeamBallControlDrawer()
+    passes_steals_drawer = PassStealDrawer()
 
     # draw object tracks
     output_video_frames = player_tracks_drawer.draw(video_frames, 
@@ -52,6 +59,11 @@ def main():
     output_video_frames = team_ball_control_drawer.draw(output_video_frames, 
                                                         player_assignment, 
                                                         ball_acquisition)
+    
+    # draw passes and steals stats
+    output_video_frames = passes_steals_drawer.draw(output_video_frames,
+                                                       passes,
+                                                       steals)
 
     # save video
     save_video(output_video_frames, "output_videos/output_video.avi")

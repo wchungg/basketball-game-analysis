@@ -5,7 +5,7 @@ from utils import measure_distance, get_center_of_bbox
 class BallAcquisitionDetector:
     def __init__(self):
         self.possession_threshold = 50
-        self.min_frames = 11
+        self.min_frames = 13
         self.containment_threshold = 0.8
 
     def get_key_player_assigment_points(self, player_bbox, ball_center):
@@ -28,14 +28,16 @@ class BallAcquisitionDetector:
             output_points.append((ball_center_x, y2))
 
         output_points += [
-            (x1, y1), # top left corner
-            (x2, y1), # top right corner
-            (x1, y2), # bottom left corner
-            (x2, y2), # bottom right corner
-            (x1 + width // 2, y1), # top center
-            (x1 + width // 2, y2), # bottom center
-            (x1, y1 + height // 2), # left center
-            (x2, y1 + height // 2) # right center
+            (x1, y1),                          # top left
+            (x2, y1),                          # top right
+            (x1, y2),                          # bottom left
+            (x2, y2),                          # bottom right
+            (x1 + width//2, y1),               # top center
+            (x1 + width//2, y2),               # bottom center
+            (x1, y1 + height//2),              # center left
+            (x2, y1 + height//2),              # center right
+            # (x1 + width//2, y1 + height//2), # center point
+            # (x1 + width//2, y1 + height//3), # mid-top center
         ]
 
         return output_points
@@ -49,20 +51,18 @@ class BallAcquisitionDetector:
         px1, py1, px2, py2 = player_bbox
         bx1, by1, bx2, by2 = ball_bbox
 
-        ball_area = (bx2 - bx1) * (by2 - by1)
-
         intersection_x1 = max(px1, bx1)
         intersection_y1 = max(py1, by1)
         intersection_x2 = min(px2, bx2)
         intersection_y2 = min(py2, by2)
 
         if intersection_x2 < intersection_x1 or intersection_y2 < intersection_y1:
-            return 0
+            return 0.0
 
         intersection_area = (intersection_x2 - intersection_x1) * (intersection_y2 - intersection_y1)
-        containment_ratio = intersection_area / ball_area
+        ball_area = (bx2 - bx1) * (by2 - by1)
 
-        return containment_ratio
+        return intersection_area / ball_area
     
     def find_best_possession_candidate(self, ball_center, player_tracks_frame, ball_bbox):
         high_containment_players = []
