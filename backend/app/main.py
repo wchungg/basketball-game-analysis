@@ -1,10 +1,11 @@
 from utils import read_video, save_video
 from trackers import PlayerTracker, BallTracker
-from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer, CourtKeypointDrawer
+from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer, CourtKeypointDrawer, TacticalViewDrawer
 from team_assigner import TeamAssigner
 from ball_acquisition import BallAcquisitionDetector
 from pass_steal_detector import PassAndStealDetector
 from court_keypoint_detector import CourtKeypointDetector
+from tactical_view_converter import TacticalViewConverter
 
 def main():
     print("hello world")
@@ -51,6 +52,9 @@ def main():
     passes = passes_and_steal_detector.detect_pass(ball_acquisition, player_assignment)
     steals = passes_and_steal_detector.detect_steal(ball_acquisition, player_assignment)
 
+    # tactical view
+    tactical_view_converter = TacticalViewConverter(court_image_path="./images/basketball_court.png")
+
     # draw output
     # init drawers
     player_tracks_drawer = PlayerTracksDrawer()
@@ -58,6 +62,7 @@ def main():
     team_ball_control_drawer = TeamBallControlDrawer()
     passes_steals_drawer = PassStealDrawer()
     court_keypoint_drawer = CourtKeypointDrawer()
+    tactical_view_drawer = TacticalViewDrawer()
 
     # draw object tracks
     output_video_frames = player_tracks_drawer.draw(video_frames, 
@@ -78,6 +83,12 @@ def main():
     
     output_video_frames = court_keypoint_drawer.draw(output_video_frames,
                                                      court_keypoints)
+    
+    output_video_frames = tactical_view_drawer.draw(output_video_frames, 
+                                                    tactical_view_converter.court_image_path,
+                                                    tactical_view_converter.width,
+                                                    tactical_view_converter.height
+                                                    )
 
     # save video
     save_video(output_video_frames, "output_videos/output_video.avi")
