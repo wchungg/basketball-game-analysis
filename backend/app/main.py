@@ -1,9 +1,10 @@
 from utils import read_video, save_video
 from trackers import PlayerTracker, BallTracker
-from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer
+from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer, CourtKeypointDrawer
 from team_assigner import TeamAssigner
 from ball_acquisition import BallAcquisitionDetector
 from pass_steal_detector import PassAndStealDetector
+from court_keypoint_detector import CourtKeypointDetector
 
 def main():
     print("hello world")
@@ -14,10 +15,19 @@ def main():
     # init tracker
     player_tracker = PlayerTracker("models/player_detector.pt")
     ball_tracker = BallTracker("models/ball_detector_model.pt")
+    
+    # init court keypoint detector
+    court_keypoint_detector = CourtKeypointDetector("models/court_keypoint_detector.pt")
 
     # run trackers
     player_tracks = player_tracker.get_object_tracks(video_frames, read_from_stub=True, stub_path="stubs/player_track_stubs.pkl")
     ball_tracks = ball_tracker.get_object_tracks(video_frames, read_from_stub=True, stub_path="stubs/ball_track_stubs.pkl")
+
+    # get court keypoints
+    court_keypoints = court_keypoint_detector.get_court_keypoints(video_frames,
+                                                                  read_from_stub=True,
+                                                                  stub_path="stubs/court_key_points_stubs.pkl"
+                                                                  )
 
     # remove wrong ball detections
     ball_tracks = ball_tracker.remove_wrong_detections(ball_tracks)
@@ -47,6 +57,7 @@ def main():
     ball_tracks_drawer = BallTracksDrawer()
     team_ball_control_drawer = TeamBallControlDrawer()
     passes_steals_drawer = PassStealDrawer()
+    court_keypoint_drawer = CourtKeypointDrawer()
 
     # draw object tracks
     output_video_frames = player_tracks_drawer.draw(video_frames, 
@@ -64,6 +75,9 @@ def main():
     output_video_frames = passes_steals_drawer.draw(output_video_frames,
                                                        passes,
                                                        steals)
+    
+    output_video_frames = court_keypoint_drawer.draw(output_video_frames,
+                                                     court_keypoints)
 
     # save video
     save_video(output_video_frames, "output_videos/output_video.avi")

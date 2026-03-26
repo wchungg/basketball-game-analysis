@@ -1,2 +1,3 @@
 ball_detector_model.pt
 player_detector.pt
+court_keypoint_detector.pt
