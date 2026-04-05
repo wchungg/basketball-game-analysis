@@ -1,0 +1,1 @@
+from .config import STUBS_DEFAULT_PATH, PLAYER_DETECTOR_PATH

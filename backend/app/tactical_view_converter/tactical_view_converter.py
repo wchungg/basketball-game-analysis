@@ -86,7 +86,7 @@
 #                     error = (proportion_detected - proportion_tactical) / proportion_tactical
 #                     error = abs(error)
 
-#                     if error > 0.6:
+#                     if error > 0.65:
 #                         keypoints_list[frame_idx].xy[0][i] *= 0
 #                         keypoints_list[frame_idx].xyn[0][i] *= 0
 #                         invalid_keypoints.append(i)

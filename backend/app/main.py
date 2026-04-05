@@ -1,4 +1,6 @@
 from utils import read_video, save_video
+import argparse
+import os
 from trackers import PlayerTracker, BallTracker
 from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer, CourtKeypointDrawer, TacticalViewDrawer, SpeedAndDistanceDrawer
 from team_assigner import TeamAssigner
@@ -8,8 +10,22 @@ from court_keypoint_detector import CourtKeypointDetector
 from tactical_view_converter import TacticalViewConverter
 from speed_and_distance_calculator import SpeedAndDistanceCalculator
 
+# from configs import (
+#     STUBS_DEFAULT_PATH,
+# )
+
+# def parse_args():
+#     parser = argparse.ArgumentParser(description='Basketball Video Analysis')
+#     parser.add_argument('input_video', type=str, help='Path to input video file')
+#     parser.add_argument('--output_video', type=str, default=OUTPUT_VIDEO_PATH, 
+#                         help='Path to output video file')
+#     parser.add_argument('--stub_path', type=str, default=STUBS_DEFAULT_PATH,
+#                         help='Path to stub directory')
+#     return parser.parse_args()
+
 def main():
-    print("hello world")
+    # args = parse_args()
+    print("Loading...")
 
     # read video
     video_frames = read_video("video_data/turnover.mp4")
@@ -42,6 +58,7 @@ def main():
                                                                 player_tracks, 
                                                                 load_from_stub=True, 
                                                                 stub_path="stubs/player_assignment_stub.pkl"
+                                                                # stub_path=os.path.join(args.stub_path, 'player_track_stubs.pkl')
                                                                 )
 
     # Ball Acquisition
@@ -68,9 +85,6 @@ def main():
     player_distance_per_frame = speed_distance_calculator.calculate_distance(tactical_player_positions)
     player_speed_per_frame = speed_distance_calculator.calculate_speed(player_distance_per_frame)
 
-    print(player_distance_per_frame)
-    print("============================")
-    print(player_speed_per_frame)
 
     # draw output
     # init drawers
@@ -120,7 +134,8 @@ def main():
 
     # save video
     save_video(output_video_frames, "output_videos/output_video.avi")
-
+    print("Done!")
+    
 if __name__ == "__main__":
     main()
 
