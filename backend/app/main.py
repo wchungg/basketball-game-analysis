@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import sys
+import uvicorn
 
 APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
@@ -63,7 +64,7 @@ def analyze_sample_video(request: AnalyzeSampleRequest) -> AnalysisResponse:
 @app.post("/api/v1/analyze/upload", response_model=AnalysisResponse)
 async def analyze_uploaded_video(
     file: UploadFile = File(...),
-    use_stubs: bool = Query(default=False),
+    use_stubs: bool = Query(default=True),
 ) -> AnalysisResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
@@ -107,3 +108,7 @@ def download_result_video(job_id: str) -> FileResponse:
         media_type="video/mp4",
         filename=output_path.name,
     )
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    # uvicorn app.main:app --reload

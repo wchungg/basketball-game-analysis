@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 import re
 import sys
@@ -75,21 +76,23 @@ class VideoAnalysisService:
         self,
         filename: str,
         file_bytes: bytes,
-        use_stubs: bool = False,
+        use_stubs: bool = True,
     ) -> AnalysisResponse:
         if not file_bytes:
             raise ValueError("Uploaded video is empty.")
 
         safe_name = self._slugify(Path(filename).stem)
+        file_hash = hashlib.sha256(file_bytes).hexdigest()[:16]
         job_id = uuid.uuid4().hex
-        upload_path = TEMP_UPLOADS_DIR / f"{safe_name}_{job_id}{Path(filename).suffix.lower() or '.mp4'}"
+        upload_key = f"{safe_name}_{file_hash}"
+        upload_path = TEMP_UPLOADS_DIR / f"{upload_key}{Path(filename).suffix.lower() or '.mp4'}"
         upload_path.write_bytes(file_bytes)
 
         return self._analyze_video_file(
             video_path=upload_path,
             display_name=filename,
             use_stubs=use_stubs,
-            stub_prefix=f"{safe_name}_{job_id}",
+            stub_prefix=upload_key,
             job_id=job_id,
         )
 
