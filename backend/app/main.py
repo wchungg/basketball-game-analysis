@@ -1,169 +1,100 @@
-from utils import read_video, save_video
-import argparse
+from pathlib import Path
 import os
-from trackers import PlayerTracker, BallTracker
-from drawers import PlayerTracksDrawer, BallTracksDrawer, TeamBallControlDrawer, PassStealDrawer, CourtKeypointDrawer, TacticalViewDrawer, SpeedAndDistanceDrawer
-from team_assigner import TeamAssigner
-from ball_acquisition import BallAcquisitionDetector
-from pass_steal_detector import PassAndStealDetector
-from court_keypoint_detector import CourtKeypointDetector
-from tactical_view_converter import TacticalViewConverter
-from speed_and_distance_calculator import SpeedAndDistanceCalculator
+import sys
 
-# from configs import (
-#     STUBS_DEFAULT_PATH,
-# )
+APP_DIR = Path(__file__).resolve().parent
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
 
-# def parse_args():
-#     parser = argparse.ArgumentParser(description='Basketball Video Analysis')
-#     parser.add_argument('input_video', type=str, help='Path to input video file')
-#     parser.add_argument('--output_video', type=str, default=OUTPUT_VIDEO_PATH, 
-#                         help='Path to output video file')
-#     parser.add_argument('--stub_path', type=str, default=STUBS_DEFAULT_PATH,
-#                         help='Path to stub directory')
-#     return parser.parse_args()
+CACHE_DIR = APP_DIR.parent / ".cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(CACHE_DIR / "matplotlib"))
+os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_DIR))
+os.makedirs(Path(os.environ["MPLCONFIGDIR"]), exist_ok=True)
 
-def main():
-    # args = parse_args()
-    print("Loading...")
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
-    # read video
-    video_frames = read_video("video_data/turnover.mp4")
+from schemas import AnalyzeSampleRequest, AnalysisResponse, HealthResponse, VideoAsset
+from services.video_analysis_service import VideoAnalysisService
 
-    # init tracker
-    player_tracker = PlayerTracker("models/player_detector.pt")
-    ball_tracker = BallTracker("models/ball_detector_model.pt")
-    
-    # init court keypoint detector
-    court_keypoint_detector = CourtKeypointDetector("models/court_keypoint_detector.pt")
 
-    # run trackers
-    player_tracks = player_tracker.get_object_tracks(video_frames, read_from_stub=True, stub_path="stubs/player_track_stubs.pkl")
-    ball_tracks = ball_tracker.get_object_tracks(video_frames, read_from_stub=True, stub_path="stubs/ball_track_stubs.pkl")
+app = FastAPI(
+    title="NBA Game Analysis API",
+    version="1.0.0",
+    description="REST API for basketball video analysis and annotated video generation.",
+)
 
-    # get court keypoints
-    court_keypoints = court_keypoint_detector.get_court_keypoints(video_frames,
-                                                                  read_from_stub=True,
-                                                                  stub_path="stubs/court_key_points_stubs.pkl"
-                                                                  )
+analysis_service = VideoAnalysisService()
 
-    # remove wrong ball detections
-    ball_tracks = ball_tracker.remove_wrong_detections(ball_tracks)
-    # interpolate ball tracks
-    ball_tracks = ball_tracker.interpolate_ball_positions(ball_tracks)
 
-    # Assign Player Teams
-    team_assigner = TeamAssigner()
-    player_assignment = team_assigner.get_player_teams_across_frames(video_frames, 
-                                                                player_tracks, 
-                                                                load_from_stub=True, 
-                                                                stub_path="stubs/player_assignment_stub.pkl"
-                                                                # stub_path=os.path.join(args.stub_path, 'player_track_stubs.pkl')
-                                                                )
+@app.get("/api/v1/health", response_model=HealthResponse)
+def health_check() -> HealthResponse:
+    return HealthResponse(status="ok")
 
-    # Ball Acquisition
-    ball_acquisition_detector = BallAcquisitionDetector()
-    ball_acquisition = ball_acquisition_detector.detect_ball_possession(player_tracks, ball_tracks)
 
-    # detect passes and steals
-    passes_and_steal_detector = PassAndStealDetector()
-    passes = passes_and_steal_detector.detect_pass(ball_acquisition, player_assignment)
-    steals = passes_and_steal_detector.detect_steal(ball_acquisition, player_assignment)
+@app.get("/api/v1/videos", response_model=list[VideoAsset])
+def list_sample_videos() -> list[VideoAsset]:
+    return analysis_service.list_sample_videos()
 
-    # tactical view
-    tactical_view_converter = TacticalViewConverter(court_image_path="./images/basketball_court.png")
-    court_keypoints = tactical_view_converter.validate_keypoints(court_keypoints)
-    tactical_player_positions = tactical_view_converter.transform_players_to_tactical_view(court_keypoints, player_tracks)
 
-    # Speed and distance calculator
-    speed_distance_calculator = SpeedAndDistanceCalculator(
-        tactical_view_converter.width,
-        tactical_view_converter.height,
-        tactical_view_converter.actual_width_in_meters,
-        tactical_view_converter.actual_height_in_meters
+@app.post("/api/v1/analyze/sample", response_model=AnalysisResponse)
+def analyze_sample_video(request: AnalyzeSampleRequest) -> AnalysisResponse:
+    try:
+        return analysis_service.analyze_sample_video(
+            video_name=request.video_name,
+            use_stubs=request.use_stubs,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/analyze/upload", response_model=AnalysisResponse)
+async def analyze_uploaded_video(
+    file: UploadFile = File(...),
+    use_stubs: bool = Query(default=False),
+) -> AnalysisResponse:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
+
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".mp4", ".avi", ".mov", ".mkv"}:
+        raise HTTPException(status_code=400, detail="Unsupported video format.")
+
+    try:
+        file_bytes = await file.read()
+        return analysis_service.analyze_uploaded_video(
+            filename=file.filename,
+            file_bytes=file_bytes,
+            use_stubs=use_stubs,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/results/{job_id}", response_model=AnalysisResponse)
+def get_analysis_result(job_id: str) -> AnalysisResponse:
+    result = analysis_service.get_result(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Analysis result not found.")
+
+    return result
+
+
+@app.get("/api/v1/results/{job_id}/video")
+def download_result_video(job_id: str) -> FileResponse:
+    result = analysis_service.get_result(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Analysis result not found.")
+
+    output_path = Path(result.output_video_path)
+    if not output_path.exists():
+        raise HTTPException(status_code=404, detail="Output video file not found.")
+
+    return FileResponse(
+        path=output_path,
+        media_type="video/x-msvideo",
+        filename=output_path.name,
     )
-    player_distance_per_frame = speed_distance_calculator.calculate_distance(tactical_player_positions)
-    player_speed_per_frame = speed_distance_calculator.calculate_speed(player_distance_per_frame)
-
-
-    # draw output
-    # init drawers
-    player_tracks_drawer = PlayerTracksDrawer()
-    ball_tracks_drawer = BallTracksDrawer()
-    team_ball_control_drawer = TeamBallControlDrawer()
-    passes_steals_drawer = PassStealDrawer()
-    court_keypoint_drawer = CourtKeypointDrawer()
-    tactical_view_drawer = TacticalViewDrawer()
-    speed_and_distance_drawer = SpeedAndDistanceDrawer()
-
-    # draw object tracks
-    output_video_frames = player_tracks_drawer.draw(video_frames, 
-                                                    player_tracks, 
-                                                    player_assignment,
-                                                    ball_acquisition)
-    output_video_frames = ball_tracks_drawer.draw(output_video_frames, ball_tracks)
-    
-    # draw team ball control
-    output_video_frames = team_ball_control_drawer.draw(output_video_frames, 
-                                                        player_assignment, 
-                                                        ball_acquisition)
-    
-    # draw passes and steals stats
-    output_video_frames = passes_steals_drawer.draw(output_video_frames,
-                                                       passes,
-                                                       steals)
-    
-    output_video_frames = court_keypoint_drawer.draw(output_video_frames,
-                                                     court_keypoints)
-    
-    output_video_frames = tactical_view_drawer.draw(output_video_frames, 
-                                                    tactical_view_converter.court_image_path,
-                                                    tactical_view_converter.width,
-                                                    tactical_view_converter.height,
-                                                    tactical_view_converter.key_points,
-                                                    tactical_player_positions,
-                                                    player_assignment,
-                                                    ball_acquisition
-                                                    )
-
-    # speed and distance drawer
-    output_video_frames = speed_and_distance_drawer.draw(output_video_frames,
-                                                         player_tracks, 
-                                                         player_distance_per_frame, 
-                                                         player_speed_per_frame) 
-
-    # save video
-    save_video(output_video_frames, "output_videos/output_video.avi")
-    print("Done!")
-    
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-
-
-
-# from fastapi import FastAPI
-# import uvicorn
-# from ultralytics import YOLO 
-
-# app = FastAPI()
-
-# model = YOLO("models/player_detector.pt")
-
-# results = model.track("video_data/turnover.mp4", save=True)
-# print(results)
-# print("================")
-# for box in results[0].boxes:
-#     print(box)
-
-# @app.get("/")
-# def read_root():
-#     return {"message": "FastAPI YOLO backend running"}
-
-
-# if __name__ == "__main__":
-#     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

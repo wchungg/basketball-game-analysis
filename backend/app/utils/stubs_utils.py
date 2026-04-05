@@ -2,12 +2,13 @@ import os
 import pickle
 
 def save_stub(stub_path, object):
-    if not os.path.exists(os.path.dirname(stub_path)):
-        os.mkdir(os.path.dirname(stub_path))
+    if stub_path is None:
+        return
 
-    if stub_path is not None:
-        with open(stub_path, "wb") as f:
-            pickle.dump(object, f)
+    os.makedirs(os.path.dirname(stub_path), exist_ok=True)
+
+    with open(stub_path, "wb") as f:
+        pickle.dump(object, f)
 
 
 def load_stub(read_from_stub, stub_path):
@@ -17,4 +18,3 @@ def load_stub(read_from_stub, stub_path):
             return object
         
     return None
-

@@ -15,8 +15,7 @@ def read_video(vid_path):
     return frames
 
 def save_video(output_vid_frames, output_vid_path):
-    if not os.path.exists(os.path.dirname(output_vid_path)):
-        os.mkdir(os.path.dirname(output_vid_path))
+    os.makedirs(os.path.dirname(output_vid_path), exist_ok=True)
 
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
     out = cv2.VideoWriter(output_vid_path, fourcc, 24.0, (output_vid_frames[0].shape[1], output_vid_frames[0].shape[0]))
@@ -25,5 +24,4 @@ def save_video(output_vid_frames, output_vid_path):
         out.write(frame)
 
     out.release()
-
 

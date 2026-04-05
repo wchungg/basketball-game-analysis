@@ -1,6 +1,5 @@
 from PIL import Image
 import cv2
-from transformers import CLIPProcessor, CLIPModel
 import sys
 sys.path.append("../")
 from utils import load_stub, save_stub
@@ -17,6 +16,13 @@ class TeamAssigner:
         self.player_team_dict = {}
 
     def load_model(self):
+        try:
+            from transformers import CLIPModel, CLIPProcessor
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "transformers is required for team assignment. Install backend/requirements.txt first."
+            ) from exc
+
         self.model = CLIPModel.from_pretrained("patrickjohncyh/fashion-clip")
         self.processor = CLIPProcessor.from_pretrained("patrickjohncyh/fashion-clip")
 
