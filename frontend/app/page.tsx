@@ -17,6 +17,22 @@ type AnalysisJobResponse = {
   steals_team_2?: number | null;
 };
 
+type UploadHistoryItem = {
+  file_name: string;
+  file_path: string;
+  file_size_bytes: number;
+  created_at: string;
+  video_url?: string | null;
+  job_id?: string | null;
+  input_video_name?: string | null;
+  status?: string | null;
+  frame_count?: number | null;
+  passes_team_1?: number | null;
+  passes_team_2?: number | null;
+  steals_team_1?: number | null;
+  steals_team_2?: number | null;
+};
+
 type ToggleConfig = {
   key: string;
   label: string;
@@ -56,6 +72,7 @@ export default function Home() {
   const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
   const [drawerOptions, setDrawerOptions] = useState<Record<string, boolean>>(defaultDrawerOptions);
   const [stubOptions, setStubOptions] = useState<Record<string, boolean>>(defaultStubOptions);
+  const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
   const uploadAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -82,6 +99,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    void loadUploadHistory();
+  }, []);
+
+  useEffect(() => {
     if (!result?.job_id || !["queued", "in_progress", "cancelling"].includes(result.status)) {
       return;
     }
@@ -100,6 +121,7 @@ export default function Home() {
         if (["completed", "failed", "cancelled"].includes(data.status)) {
           setIsSubmitting(false);
           setIsCancelling(false);
+          void loadUploadHistory();
         }
       } catch {
         // Keep polling until the next interval.
@@ -253,6 +275,20 @@ export default function Home() {
       const message = error instanceof Error ? error.message : "Cancel request failed.";
       setErrorMessage(message);
       setIsCancelling(false);
+    }
+  }
+
+  async function loadUploadHistory() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/history`);
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as UploadHistoryItem[];
+      setUploadHistory(data);
+    } catch {
+      // Leave the history section empty if the backend is unavailable.
     }
   }
 
@@ -435,6 +471,83 @@ export default function Home() {
             </div>
           </aside>
         </section>
+
+        <section className="overflow-hidden rounded-[2rem] border border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow)]">
+          <div className="border-b border-[var(--line)] px-6 py-4">
+            <h2 className="text-2xl font-semibold">Upload History</h2>
+          </div>
+
+          <div className="space-y-4 p-6">
+            {uploadHistory.length > 0 ? (
+              uploadHistory.map((item) => (
+                <details
+                  key={`${item.file_name}-${item.created_at}`}
+                  className="rounded-[1.25rem] border border-[var(--line)] bg-white/70"
+                >
+                  <summary className="group flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold">{item.file_name}</p>
+                      <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                        {formatDate(item.created_at)} · {formatFileSize(item.file_size_bytes)}
+                      </p>
+                    </div>
+                    <span className="inline-flex w-8 justify-center text-2xl leading-none text-[var(--ink-soft)] transition-transform group-open:rotate-180">
+                      v
+                    </span>
+                  </summary>
+
+                  <div className="space-y-4 border-t border-[var(--line)] px-4 py-4">
+                    {item.video_url && isBrowserPlayableVideo(item.file_name) ? (
+                      <div className="space-y-3">
+                        <video
+                          controls
+                          className="aspect-video w-full rounded-[1.25rem] bg-black"
+                          src={`${API_BASE_URL}${item.video_url}`}
+                        />
+                      </div>
+                    ) : null}
+
+                    {item.video_url && !isBrowserPlayableVideo(item.file_name) ? (
+                      <p className="rounded-[1rem] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--ink-soft)]">
+                        This saved file format may not play inline in the browser. Open it in a new
+                        tab or download it instead.
+                      </p>
+                    ) : null}
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <SummaryRow label="Created" value={formatDate(item.created_at)} />
+                      <SummaryRow label="Size" value={formatFileSize(item.file_size_bytes)} />
+                      <SummaryRow label="Path" value={item.file_path} mono />
+                      <SummaryRow label="Status" value={item.status ? humanizeStatus(item.status) : "Saved output"} />
+                      {item.input_video_name ? <SummaryRow label="Input" value={item.input_video_name} /> : null}
+                      {item.job_id ? <SummaryRow label="Job ID" value={item.job_id} mono /> : null}
+                      {item.frame_count != null ? <SummaryRow label="Frames" value={String(item.frame_count)} /> : null}
+                      {item.passes_team_1 != null ? <SummaryRow label="Team 1 Passes" value={String(item.passes_team_1)} /> : null}
+                      {item.passes_team_2 != null ? <SummaryRow label="Team 2 Passes" value={String(item.passes_team_2)} /> : null}
+                      {item.steals_team_1 != null ? <SummaryRow label="Team 1 Steals" value={String(item.steals_team_1)} /> : null}
+                      {item.steals_team_2 != null ? <SummaryRow label="Team 2 Steals" value={String(item.steals_team_2)} /> : null}
+                    </div>
+
+                    {item.video_url ? (
+                      <a
+                        href={`${API_BASE_URL}${item.video_url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-medium"
+                      >
+                        Open output video
+                      </a>
+                    ) : null}
+                  </div>
+                </details>
+              ))
+            ) : (
+              <p className="leading-7 text-[var(--ink-soft)]">
+                No processed uploads have been found in the output videos folder yet.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
@@ -466,16 +579,16 @@ function OptionGroup({
           <button
             type="button"
             onClick={() => onSetAll(true)}
-            className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--accent)]"
+            className="rounded-full border border-[var(--line)] bg-transparent px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--ink-soft)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)]"
           >
-            All On
+            On
           </button>
           <button
             type="button"
             onClick={() => onSetAll(false)}
-            className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--accent)]"
+            className="rounded-full border border-[var(--line)] bg-transparent px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--ink-soft)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)]"
           >
-            All Off
+            Off
           </button>
         </div>
       </div>
@@ -545,4 +658,30 @@ function humanizeStatus(status: string) {
     default:
       return status;
   }
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function isBrowserPlayableVideo(fileName: string) {
+  return fileName.toLowerCase().endsWith(".mp4");
 }

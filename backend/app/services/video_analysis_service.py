@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime
 from pathlib import Path
 import re
 import sys
@@ -31,7 +32,7 @@ from drawers import (
     TeamBallControlDrawer,
 )
 from pass_steal_detector import PassAndStealDetector
-from schemas import AnalysisJobResponse, DrawerOptions, StubOptions, VideoAsset
+from schemas import AnalysisJobResponse, DrawerOptions, StubOptions, UploadHistoryItem, VideoAsset
 from speed_and_distance_calculator import SpeedAndDistanceCalculator
 from tactical_view_converter import TacticalViewConverter
 from team_assigner import TeamAssigner
@@ -59,6 +60,51 @@ class VideoAnalysisService:
             for path in sorted(SAMPLE_VIDEOS_DIR.glob("*"))
             if path.is_file()
         ]
+
+    def list_upload_history(self, limit: int = 20) -> list[UploadHistoryItem]:
+        files = [
+            path for path in OUTPUT_VIDEOS_DIR.glob("*")
+            if path.is_file() and path.suffix.lower() in {".mp4", ".avi", ".mov", ".mkv"}
+        ]
+        files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+
+        jobs_by_output_path = {
+            job.output_video_path: job
+            for job in self.jobs.values()
+            if job.output_video_path
+        }
+
+        history: list[UploadHistoryItem] = []
+        for path in files[:limit]:
+            stat = path.stat()
+            matched_job = jobs_by_output_path.get(str(path))
+
+            history.append(
+                UploadHistoryItem(
+                    file_name=path.name,
+                    file_path=str(path),
+                    file_size_bytes=stat.st_size,
+                    created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    video_url=matched_job.output_video_url if matched_job else f"/api/v1/history/video/{path.name}",
+                    job_id=matched_job.job_id if matched_job else None,
+                    input_video_name=matched_job.input_video_name if matched_job else None,
+                    status=matched_job.status if matched_job else None,
+                    frame_count=matched_job.frame_count if matched_job else None,
+                    passes_team_1=matched_job.passes_team_1 if matched_job else None,
+                    passes_team_2=matched_job.passes_team_2 if matched_job else None,
+                    steals_team_1=matched_job.steals_team_1 if matched_job else None,
+                    steals_team_2=matched_job.steals_team_2 if matched_job else None,
+                )
+            )
+
+        return history
+
+    def get_history_video_path(self, file_name: str) -> Path | None:
+        safe_name = Path(file_name).name
+        candidate = OUTPUT_VIDEOS_DIR / safe_name
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        return None
 
     def get_result(self, job_id: str) -> AnalysisJobResponse | None:
         with self.lock:

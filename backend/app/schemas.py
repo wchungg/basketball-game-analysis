@@ -10,6 +10,22 @@ class VideoAsset(BaseModel):
     path: str
 
 
+class UploadHistoryItem(BaseModel):
+    file_name: str
+    file_path: str
+    file_size_bytes: int
+    created_at: str
+    video_url: str | None = None
+    job_id: str | None = None
+    input_video_name: str | None = None
+    status: str | None = None
+    frame_count: int | None = None
+    passes_team_1: int | None = None
+    passes_team_2: int | None = None
+    steals_team_1: int | None = None
+    steals_team_2: int | None = None
+
+
 class DrawerOptions(BaseModel):
     player_tracks: bool = True
     ball_tracks: bool = True

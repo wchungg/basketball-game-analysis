@@ -22,6 +22,7 @@ from schemas import (
     DrawerOptions,
     HealthResponse,
     StubOptions,
+    UploadHistoryItem,
     VideoAsset,
 )
 from services.video_analysis_service import VideoAnalysisService
@@ -52,6 +53,31 @@ def health_check() -> HealthResponse:
 @app.get("/api/v1/videos", response_model=list[VideoAsset])
 def list_sample_videos() -> list[VideoAsset]:
     return analysis_service.list_sample_videos()
+
+
+@app.get("/api/v1/history", response_model=list[UploadHistoryItem])
+def list_upload_history(limit: int = Query(default=20, ge=1, le=100)) -> list[UploadHistoryItem]:
+    return analysis_service.list_upload_history(limit=limit)
+
+
+@app.get("/api/v1/history/video/{file_name}")
+def download_history_video(file_name: str) -> FileResponse:
+    output_path = analysis_service.get_history_video_path(file_name)
+    if output_path is None:
+        raise HTTPException(status_code=404, detail="History video file not found.")
+
+    media_types = {
+        ".mp4": "video/mp4",
+        ".avi": "video/x-msvideo",
+        ".mov": "video/quicktime",
+        ".mkv": "video/x-matroska",
+    }
+
+    return FileResponse(
+        path=output_path,
+        media_type=media_types.get(output_path.suffix.lower(), "application/octet-stream"),
+        filename=output_path.name,
+    )
 
 
 @app.post("/api/v1/analyze/sample", response_model=AnalysisJobResponse)
