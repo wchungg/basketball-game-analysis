@@ -14,4 +14,4 @@ PLAYER_DETECTOR_PATH = str(MODELS_DIR / "player_detector.pt")
 BALL_DETECTOR_PATH = str(MODELS_DIR / "ball_detector_model.pt")
 COURT_KEYPOINT_DETECTOR_PATH = str(MODELS_DIR / "court_keypoint_detector.pt")
 COURT_IMAGE_PATH = IMAGES_DIR / "basketball_court.png"
-OUTPUT_VIDEO_PATH = str(OUTPUT_VIDEOS_DIR / "output_video.avi")
+OUTPUT_VIDEO_PATH = str(OUTPUT_VIDEOS_DIR / "output_video.mp4")

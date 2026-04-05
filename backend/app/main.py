@@ -13,6 +13,7 @@ os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_DIR))
 os.makedirs(Path(os.environ["MPLCONFIGDIR"]), exist_ok=True)
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from schemas import AnalyzeSampleRequest, AnalysisResponse, HealthResponse, VideoAsset
@@ -23,6 +24,14 @@ app = FastAPI(
     title="NBA Game Analysis API",
     version="1.0.0",
     description="REST API for basketball video analysis and annotated video generation.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 analysis_service = VideoAnalysisService()
@@ -95,6 +104,6 @@ def download_result_video(job_id: str) -> FileResponse:
 
     return FileResponse(
         path=output_path,
-        media_type="video/x-msvideo",
+        media_type="video/mp4",
         filename=output_path.name,
     )

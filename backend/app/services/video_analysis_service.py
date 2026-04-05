@@ -170,7 +170,7 @@ class VideoAnalysisService:
         )
 
         analysis_job_id = job_id or uuid.uuid4().hex
-        output_path = OUTPUT_VIDEOS_DIR / f"{Path(display_name).stem}_{analysis_job_id}.avi"
+        output_path = OUTPUT_VIDEOS_DIR / f"{Path(display_name).stem}_{analysis_job_id}.mp4"
         save_video(output_video_frames, str(output_path))
 
         result = AnalysisResponse(
