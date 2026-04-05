@@ -1,7 +1,6 @@
 from pathlib import Path
 import os
 import sys
-import uvicorn
 
 APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
@@ -13,11 +12,18 @@ os.environ.setdefault("MPLCONFIGDIR", str(CACHE_DIR / "matplotlib"))
 os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_DIR))
 os.makedirs(Path(os.environ["MPLCONFIGDIR"]), exist_ok=True)
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from schemas import AnalyzeSampleRequest, AnalysisResponse, HealthResponse, VideoAsset
+from schemas import (
+    AnalyzeSampleRequest,
+    AnalysisJobResponse,
+    DrawerOptions,
+    HealthResponse,
+    StubOptions,
+    VideoAsset,
+)
 from services.video_analysis_service import VideoAnalysisService
 
 
@@ -48,8 +54,8 @@ def list_sample_videos() -> list[VideoAsset]:
     return analysis_service.list_sample_videos()
 
 
-@app.post("/api/v1/analyze/sample", response_model=AnalysisResponse)
-def analyze_sample_video(request: AnalyzeSampleRequest) -> AnalysisResponse:
+@app.post("/api/v1/analyze/sample", response_model=AnalysisJobResponse)
+def analyze_sample_video(request: AnalyzeSampleRequest) -> AnalysisJobResponse:
     try:
         return analysis_service.analyze_sample_video(
             video_name=request.video_name,
@@ -61,11 +67,21 @@ def analyze_sample_video(request: AnalyzeSampleRequest) -> AnalysisResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/analyze/upload", response_model=AnalysisResponse)
+@app.post("/api/v1/analyze/upload", response_model=AnalysisJobResponse)
 async def analyze_uploaded_video(
     file: UploadFile = File(...),
-    use_stubs: bool = Query(default=True),
-) -> AnalysisResponse:
+    draw_player_tracks: bool = Form(default=True),
+    draw_ball_tracks: bool = Form(default=True),
+    draw_team_ball_control: bool = Form(default=True),
+    draw_passes_steals: bool = Form(default=True),
+    draw_court_keypoints: bool = Form(default=True),
+    draw_tactical_view: bool = Form(default=True),
+    draw_speed_distance: bool = Form(default=True),
+    stub_player_tracks: bool = Form(default=True),
+    stub_ball_tracks: bool = Form(default=True),
+    stub_court_keypoints: bool = Form(default=True),
+    stub_player_assignment: bool = Form(default=True),
+) -> AnalysisJobResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
 
@@ -75,18 +91,41 @@ async def analyze_uploaded_video(
 
     try:
         file_bytes = await file.read()
-        return analysis_service.analyze_uploaded_video(
+        return analysis_service.start_uploaded_video_analysis(
             filename=file.filename,
             file_bytes=file_bytes,
-            use_stubs=use_stubs,
+            drawer_options=DrawerOptions(
+                player_tracks=draw_player_tracks,
+                ball_tracks=draw_ball_tracks,
+                team_ball_control=draw_team_ball_control,
+                passes_steals=draw_passes_steals,
+                court_keypoints=draw_court_keypoints,
+                tactical_view=draw_tactical_view,
+                speed_distance=draw_speed_distance,
+            ),
+            stub_options=StubOptions(
+                player_tracks=stub_player_tracks,
+                ball_tracks=stub_ball_tracks,
+                court_keypoints=stub_court_keypoints,
+                player_assignment=stub_player_assignment,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/v1/results/{job_id}", response_model=AnalysisResponse)
-def get_analysis_result(job_id: str) -> AnalysisResponse:
+@app.get("/api/v1/results/{job_id}", response_model=AnalysisJobResponse)
+def get_analysis_result(job_id: str) -> AnalysisJobResponse:
     result = analysis_service.get_result(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Analysis result not found.")
+
+    return result
+
+
+@app.post("/api/v1/results/{job_id}/cancel", response_model=AnalysisJobResponse)
+def cancel_analysis(job_id: str) -> AnalysisJobResponse:
+    result = analysis_service.cancel_job(job_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis result not found.")
 
@@ -99,6 +138,9 @@ def download_result_video(job_id: str) -> FileResponse:
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis result not found.")
 
+    if result.status != "completed" or not result.output_video_path:
+        raise HTTPException(status_code=409, detail="Output video is not ready yet.")
+
     output_path = Path(result.output_video_path)
     if not output_path.exists():
         raise HTTPException(status_code=404, detail="Output video file not found.")
@@ -108,7 +150,3 @@ def download_result_video(job_id: str) -> FileResponse:
         media_type="video/mp4",
         filename=output_path.name,
     )
-
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
-    # uvicorn app.main:app --reload

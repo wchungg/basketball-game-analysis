@@ -1,31 +1,62 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type AnalysisResponse = {
+type AnalysisJobResponse = {
   job_id: string;
   status: string;
-  input_video_name: string;
-  output_video_name: string;
-  output_video_path: string;
-  output_video_url: string;
-  frame_count: number;
-  passes_team_1: number;
-  passes_team_2: number;
-  steals_team_1: number;
-  steals_team_2: number;
+  message?: string | null;
+  input_video_name?: string | null;
+  output_video_name?: string | null;
+  output_video_path?: string | null;
+  output_video_url?: string | null;
+  frame_count?: number | null;
+  passes_team_1?: number | null;
+  passes_team_2?: number | null;
+  steals_team_1?: number | null;
+  steals_team_2?: number | null;
+};
+
+type ToggleConfig = {
+  key: string;
+  label: string;
+  description: string;
 };
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
 
+const drawerToggles: ToggleConfig[] = [
+  { key: "player_tracks", label: "Player tracks", description: "Bounding boxes, team colors, and ball holder markers." },
+  { key: "ball_tracks", label: "Ball tracks", description: "Ball detection overlay and tracked positions." },
+  { key: "team_ball_control", label: "Ball control", description: "Team possession control summary panel." },
+  { key: "passes_steals", label: "Passes and steals", description: "Pass and steal event counters." },
+  { key: "court_keypoints", label: "Court keypoints", description: "Detected court reference points on the video." },
+  { key: "tactical_view", label: "Tactical view", description: "Mini-court tactical projection overlay." },
+  { key: "speed_distance", label: "Speed and distance", description: "Per-player speed and distance labels." },
+];
+
+const stubToggles: ToggleConfig[] = [
+  { key: "player_tracks", label: "Player tracks stub", description: "Reuse cached player detections and tracking." },
+  { key: "ball_tracks", label: "Ball tracks stub", description: "Reuse cached ball detections and interpolation inputs." },
+  { key: "court_keypoints", label: "Court keypoints stub", description: "Reuse cached court keypoint detections." },
+  { key: "player_assignment", label: "Player assignment stub", description: "Reuse cached CLIP team assignments." },
+];
+
+const defaultDrawerOptions = Object.fromEntries(drawerToggles.map(({ key }) => [key, true])) as Record<string, boolean>;
+const defaultStubOptions = Object.fromEntries(stubToggles.map(({ key }) => [key, true])) as Record<string, boolean>;
+
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Choose a basketball video to annotate.");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [result, setResult] = useState<AnalysisJobResponse | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
+  const [drawerOptions, setDrawerOptions] = useState<Record<string, boolean>>(defaultDrawerOptions);
+  const [stubOptions, setStubOptions] = useState<Record<string, boolean>>(defaultStubOptions);
+  const uploadAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -33,17 +64,13 @@ export default function Home() {
     async function checkBackendHealth() {
       try {
         const response = await fetch(`${API_BASE_URL}/api/v1/health`);
-        if (!isMounted) {
-          return;
+        if (isMounted) {
+          setIsBackendConnected(response.ok);
         }
-
-        setIsBackendConnected(response.ok);
       } catch {
-        if (!isMounted) {
-          return;
+        if (isMounted) {
+          setIsBackendConnected(false);
         }
-
-        setIsBackendConnected(false);
       }
     }
 
@@ -54,8 +81,38 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!result?.job_id || !["queued", "in_progress", "cancelling"].includes(result.status)) {
+      return;
+    }
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/results/${result.job_id}`);
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as AnalysisJobResponse;
+        setResult(data);
+        setStatusMessage(data.message ?? humanizeStatus(data.status));
+
+        if (["completed", "failed", "cancelled"].includes(data.status)) {
+          setIsSubmitting(false);
+          setIsCancelling(false);
+        }
+      } catch {
+        // Keep polling until the next interval.
+      }
+    }, 2000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [result?.job_id, result?.status]);
+
   const outputVideoUrl = useMemo(() => {
-    if (!result) {
+    if (!result?.output_video_url || result.status !== "completed") {
       return null;
     }
 
@@ -67,12 +124,30 @@ export default function Home() {
     setSelectedFile(file);
     setResult(null);
     setErrorMessage(null);
+    setIsSubmitting(false);
+    setIsCancelling(false);
 
     if (file) {
       setStatusMessage(`Ready to analyze ${file.name}.`);
     } else {
       setStatusMessage("Choose a basketball video to annotate.");
     }
+  }
+
+  function toggleDrawerOption(key: string) {
+    setDrawerOptions((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleStubOption(key: string) {
+    setStubOptions((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function setAllDrawerOptions(value: boolean) {
+    setDrawerOptions(Object.fromEntries(drawerToggles.map(({ key }) => [key, value])) as Record<string, boolean>);
+  }
+
+  function setAllStubOptions(value: boolean) {
+    setStubOptions(Object.fromEntries(stubToggles.map(({ key }) => [key, value])) as Record<string, boolean>);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -91,33 +166,93 @@ export default function Home() {
     }
 
     setIsSubmitting(true);
+    setIsCancelling(false);
     setErrorMessage(null);
     setResult(null);
-    setStatusMessage("Uploading video and waiting for backend analysis...");
+    setStatusMessage("Uploading video and starting the analysis pipeline...");
 
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
+      for (const [key, value] of Object.entries(drawerOptions)) {
+        formData.append(`draw_${key}`, String(value));
+      }
+      for (const [key, value] of Object.entries(stubOptions)) {
+        formData.append(`stub_${key}`, String(value));
+      }
+
+      const controller = new AbortController();
+      uploadAbortController.current = controller;
+
       const response = await fetch(`${API_BASE_URL}/api/v1/analyze/upload`, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      uploadAbortController.current = null;
+
+      const data = (await response.json()) as AnalysisJobResponse | { detail?: string };
 
       if (!response.ok) {
-        throw new Error(data.detail ?? "Analysis request failed.");
+        throw new Error("detail" in data ? (data.detail ?? "Analysis request failed.") : "Analysis request failed.");
       }
 
-      setResult(data as AnalysisResponse);
-      setStatusMessage("Analysis complete. Your annotated video is ready.");
+      setResult(data as AnalysisJobResponse);
+      setStatusMessage((data as AnalysisJobResponse).message ?? "Analysis is running...");
     } catch (error) {
+      uploadAbortController.current = null;
+
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setStatusMessage("Upload cancelled before the pipeline started.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const message = error instanceof Error ? error.message : "Something went wrong.";
       setErrorMessage(message);
       setStatusMessage("Analysis failed.");
-    } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleAbort() {
+    if (!isSubmitting || isCancelling) {
+      return;
+    }
+
+    if (uploadAbortController.current) {
+      uploadAbortController.current.abort();
+      uploadAbortController.current = null;
+      return;
+    }
+
+    if (!result?.job_id) {
+      setIsSubmitting(false);
+      setStatusMessage("Nothing is currently running.");
+      return;
+    }
+
+    setIsCancelling(true);
+    setStatusMessage("Stopping the pipeline safely...");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/results/${result.job_id}/cancel`, {
+        method: "POST",
+      });
+      const data = (await response.json()) as AnalysisJobResponse | { detail?: string };
+
+      if (!response.ok) {
+        throw new Error("detail" in data ? (data.detail ?? "Cancel request failed.") : "Cancel request failed.");
+      }
+
+      setResult(data as AnalysisJobResponse);
+      setStatusMessage((data as AnalysisJobResponse).message ?? "Stopping the pipeline safely...");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Cancel request failed.";
+      setErrorMessage(message);
+      setIsCancelling(false);
     }
   }
 
@@ -133,18 +268,17 @@ export default function Home() {
 
               <div className="space-y-4">
                 <h1 className="max-w-3xl text-4xl font-semibold leading-tight sm:text-5xl">
-                  Upload a game clip, run the annotation pipeline, and watch the analyzed result.
+                  Upload a game clip, customize the overlays, and watch the analyzed result.
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
-                  This frontend sends your input video to the backend analysis endpoint, waits for
-                  the tactical annotation pipeline to finish, and then displays the generated output
-                  video here.
+                  Choose which drawers should render on the output video, control which cached
+                  stubs are reused, and review the annotated result when the backend finishes.
                 </p>
               </div>
 
               <form
                 onSubmit={handleSubmit}
-                className="space-y-4 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5"
+                className="space-y-5 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5"
               >
                 <label
                   htmlFor="video-upload"
@@ -163,16 +297,40 @@ export default function Home() {
                   />
                 </label>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <OptionGroup
+                  title="Stubs"
+                  subtitle="Turn cached pipeline stages on or off for this upload."
+                  options={stubToggles}
+                  values={stubOptions}
+                  onToggle={toggleStubOption}
+                  onSetAll={setAllStubOptions}
+                />
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <button
                     type="submit"
                     disabled={isSubmitting}
                     className="inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSubmitting ? "Analyzing..." : "Upload And Analyze"}
+                    {isSubmitting ? "Running..." : "Upload And Analyze"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAbort}
+                    disabled={!isSubmitting || isCancelling}
+                    className="inline-flex items-center justify-center rounded-full border border-[var(--line)] bg-white px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isCancelling ? "Stopping..." : "Abort Upload"}
                   </button>
                   <p className="text-sm text-[var(--ink-soft)]">{statusMessage}</p>
                 </div>
+
+                {isSubmitting ? (
+                  <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    First-time analysis for a video may take a couple of minutes, especially when
+                    the relevant stubs do not exist yet.
+                  </p>
+                ) : null}
 
                 {errorMessage ? (
                   <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -185,7 +343,17 @@ export default function Home() {
             <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
               <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
                 <p className="text-sm uppercase tracking-[0.2em] text-[var(--ink-soft)]">Pipeline</p>
-                <p className="mt-3 text-2xl font-semibold">Player, ball, court, tactical view</p>
+                <p className="mt-3 text-2xl font-semibold">Configurable overlays and per-stage stub reuse</p>
+                <div className="mt-5 space-y-4">
+                  <OptionGroup
+                    title="Drawers"
+                    subtitle="Choose which overlays appear on the final annotated video."
+                    options={drawerToggles}
+                    values={drawerOptions}
+                    onToggle={toggleDrawerOption}
+                    onSetAll={setAllDrawerOptions}
+                  />
+                </div>
               </div>
               <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
                 <p className="text-sm uppercase tracking-[0.2em] text-[var(--ink-soft)]">Backend</p>
@@ -231,7 +399,9 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-[1.5rem] border border-dashed border-[rgba(127,47,25,0.25)] bg-white/50 px-6 text-center text-[var(--ink-soft)]">
-                  The annotated output video will appear here after the backend finishes processing.
+                  {result?.status === "cancelled"
+                    ? "The analysis was cancelled before a final video was produced."
+                    : "The annotated output video will appear here after the backend finishes processing."}
                 </div>
               )}
             </div>
@@ -246,18 +416,20 @@ export default function Home() {
               {result ? (
                 <>
                   <SummaryRow label="Job ID" value={result.job_id} mono />
-                  <SummaryRow label="Input" value={result.input_video_name} />
-                  <SummaryRow label="Output" value={result.output_video_name} />
-                  <SummaryRow label="Frames" value={String(result.frame_count)} />
-                  <SummaryRow label="Team 1 Passes" value={String(result.passes_team_1)} />
-                  <SummaryRow label="Team 2 Passes" value={String(result.passes_team_2)} />
-                  <SummaryRow label="Team 1 Steals" value={String(result.steals_team_1)} />
-                  <SummaryRow label="Team 2 Steals" value={String(result.steals_team_2)} />
+                  <SummaryRow label="Status" value={humanizeStatus(result.status)} />
+                  <SummaryRow label="Message" value={result.message ?? "No status message yet."} />
+                  {result.input_video_name ? <SummaryRow label="Input" value={result.input_video_name} /> : null}
+                  {result.output_video_name ? <SummaryRow label="Output" value={result.output_video_name} /> : null}
+                  {result.frame_count != null ? <SummaryRow label="Frames" value={String(result.frame_count)} /> : null}
+                  {result.passes_team_1 != null ? <SummaryRow label="Team 1 Passes" value={String(result.passes_team_1)} /> : null}
+                  {result.passes_team_2 != null ? <SummaryRow label="Team 2 Passes" value={String(result.passes_team_2)} /> : null}
+                  {result.steals_team_1 != null ? <SummaryRow label="Team 1 Steals" value={String(result.steals_team_1)} /> : null}
+                  {result.steals_team_2 != null ? <SummaryRow label="Team 2 Steals" value={String(result.steals_team_2)} /> : null}
                 </>
               ) : (
                 <p className="leading-7 text-[var(--ink-soft)]">
-                  Upload a video and this panel will show the completed analysis metadata from the
-                  FastAPI response.
+                  Upload a video and this panel will show the current job status, progress message,
+                  and final analysis metadata from the FastAPI backend.
                 </p>
               )}
             </div>
@@ -265,6 +437,77 @@ export default function Home() {
         </section>
       </div>
     </main>
+  );
+}
+
+function OptionGroup({
+  title,
+  subtitle,
+  options,
+  values,
+  onToggle,
+  onSetAll,
+}: {
+  title: string;
+  subtitle: string;
+  options: ToggleConfig[];
+  values: Record<string, boolean>;
+  onToggle: (key: string) => void;
+  onSetAll: (value: boolean) => void;
+}) {
+  return (
+    <section className="rounded-[1.25rem] border border-[var(--line)] bg-white/60 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => onSetAll(true)}
+            className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--accent)]"
+          >
+            All On
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetAll(false)}
+            className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--accent)]"
+          >
+            All Off
+          </button>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {options.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onToggle(option.key)}
+            className={`flex w-full items-start justify-between gap-4 rounded-[1rem] border px-4 py-3 text-left transition ${
+              values[option.key]
+                ? "border-[var(--accent)] bg-[rgba(201,92,43,0.08)]"
+                : "border-[var(--line)] bg-white/80"
+            }`}
+          >
+            <div>
+              <p className="font-medium">{option.label}</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">{option.description}</p>
+            </div>
+            <span
+              className={`inline-flex min-w-16 justify-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                values[option.key]
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[rgba(31,26,22,0.08)] text-[var(--ink-soft)]"
+              }`}
+            >
+              {values[option.key] ? "On" : "Off"}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -283,4 +526,23 @@ function SummaryRow({
       <p className={`mt-2 text-sm font-medium ${mono ? "break-all font-mono" : ""}`}>{value}</p>
     </div>
   );
+}
+
+function humanizeStatus(status: string) {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "in_progress":
+      return "In progress";
+    case "cancelling":
+      return "Cancelling";
+    case "cancelled":
+      return "Cancelled";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    default:
+      return status;
+  }
 }
